@@ -3,7 +3,7 @@
 DOMAIN = "print_orbit"
 LEGACY_DOMAIN = "centauri_file_sync"
 NAME = "Print Orbit"
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 PANEL_TITLE = NAME
 PANEL_ICON = "mdi:orbit"
 PANEL_URL = DOMAIN

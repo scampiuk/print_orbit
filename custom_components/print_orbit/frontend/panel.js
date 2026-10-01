@@ -128,7 +128,7 @@ class PrintOrbitPanel extends HTMLElement {
             <div class="cfs-heading-icon"><ha-icon icon="mdi:orbit"></ha-icon></div>
             <div><h1 class="cfs-title">Print Orbit</h1><div class="cfs-sub">Manage and distribute G-code across your connected printers.</div></div>
           </div>
-          <span class="cfs-badge">v0.4.0 · Centauri adapter</span>
+          <span class="cfs-badge">v0.5.0 · Centauri adapter</span>
         </div>
 
         <div class="cfs-grid">

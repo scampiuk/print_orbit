@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 - Add an authenticated bulk remote-delete endpoint for selected files and printers.
 - Add a confirmation-gated panel action with per-printer results.
