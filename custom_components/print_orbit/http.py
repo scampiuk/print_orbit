@@ -178,6 +178,27 @@ class DeleteFilesView(HomeAssistantView):
             return _error(str(exc), 400)
 
 
+class DeleteRemoteFilesView(HomeAssistantView):
+    url = f"{API_BASE}/files/remote-delete"
+    name = f"api:{DOMAIN}:files_remote_delete"
+    requires_auth = True
+
+    @require_admin
+    async def post(self, request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+            files = body.get("files")
+            printers = body.get("printers")
+            if not isinstance(files, list) or not isinstance(printers, list):
+                raise ValueError("files and printers must both be lists")
+            result = await _manager(request.app[KEY_HASS]).async_delete_remote_files(
+                files, printers
+            )
+            return web.json_response(result)
+        except (ValueError, TypeError) as exc:
+            return _error(str(exc), 400)
+
+
 class CopyView(HomeAssistantView):
     url = f"{API_BASE}/copy"
     name = f"api:{DOMAIN}:copy"
@@ -217,5 +238,6 @@ def register_views(hass: HomeAssistant) -> None:
     hass.http.register_view(FilesView())
     hass.http.register_view(StageChunkView())
     hass.http.register_view(DeleteFilesView())
+    hass.http.register_view(DeleteRemoteFilesView())
     hass.http.register_view(CopyView())
     hass.http.register_view(JobView())

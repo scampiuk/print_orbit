@@ -11,15 +11,16 @@ Print Orbit is a printer-agnostic workspace with adapter-based device support. V
 - Select any combination of files and printers.
 - Send to different printers in parallel while sending files sequentially to each individual printer.
 - See per-file and per-printer progress, warnings and errors.
+- Delete selected remote G-code files from multiple CC1 printers in one confirmed action.
 - Use the original Centauri Carbon (CC1) adapter; CC2 support is available with an access code but is not yet the primary test target.
 - Upload over HTTP without consuming a CC1 SDCP/WebSocket connection slot.
 - Use a responsive sidebar panel that follows the active Home Assistant theme.
 
-Print Orbit does not currently start prints or delete files stored on printers.
+Print Orbit does not currently start prints. Remote deletion is available for CC1 printers; CC2 deletion is reported as unsupported until its MQTT control adapter is added.
 
 ## Roadmap
 
-- Browse and bulk-delete remote files where the printer API supports it.
+- Browse remote files and extend deletion support to CC2 and additional printer adapters.
 - View printer cameras in a status grid.
 - Plan and schedule multi-stage or complex print jobs.
 - Add adapters for printer families beyond Elegoo Centauri.
@@ -88,4 +89,4 @@ Version 0.4 does not open a printer control connection to list remote files befo
 
 ## Safety scope
 
-Version 0.4 exposes no print-start action and no remote delete action. File distribution is the only printer-changing operation.
+Version 0.4 exposes no print-start action. File distribution and explicitly confirmed CC1 remote deletion are the printer-changing operations.

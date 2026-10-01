@@ -85,6 +85,7 @@ class PrintOrbitPanel extends HTMLElement {
         .cfs-drop.drag { border-color:var(--primary-color); background:var(--ha-color-fill-primary-quiet-resting, var(--secondary-background-color)); }
         .cfs-picker { display:none; }
         .cfs-actions { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--cfs-space-2); margin-top:var(--cfs-space-3); }
+        .cfs-file-actions { display:flex; gap:var(--cfs-space-2); flex-wrap:wrap; }
         .cfs-notice:empty { display:none; }
         .cfs-notice { display:block; margin-top:var(--cfs-space-3); }
         .cfs-empty { display:flex; flex-direction:column; align-items:center; gap:var(--cfs-space-2); color:var(--secondary-text-color); font-size:var(--ha-font-size-s, 13px); padding:var(--cfs-space-6) var(--cfs-space-3); text-align:center; }
@@ -165,7 +166,7 @@ class PrintOrbitPanel extends HTMLElement {
               </div>
               <div id="cfsFileNotice" class="cfs-notice"></div>
               <div id="cfsFileList" class="cfs-list"></div>
-              <div class="cfs-actions"><span class="cfs-muted">Files stay staged until removed.</span><ha-button id="cfsRemoveStaged" appearance="plain" variant="danger" size="s" type="button">Remove selected</ha-button></div>
+              <div class="cfs-actions"><span class="cfs-muted">Files stay staged until removed.</span><div class="cfs-file-actions"><ha-button id="cfsRemoveRemote" appearance="plain" variant="danger" size="s" type="button">Delete from printers</ha-button><ha-button id="cfsRemoveStaged" appearance="plain" variant="danger" size="s" type="button">Remove selected</ha-button></div></div>
             </div>
           </ha-card>
 
@@ -215,6 +216,7 @@ class PrintOrbitPanel extends HTMLElement {
     this._$('cfsSelectedFileCount').textContent = `${files} file${files === 1 ? '' : 's'} selected`;
     this._$('cfsSelectedPrinterCount').textContent = `${printers} printer${printers === 1 ? '' : 's'} selected`;
     this._$('cfsRemoveStaged').disabled = files === 0;
+    this._$('cfsRemoveRemote').disabled = files === 0 || printers === 0;
     if (!this._state.jobId) this._$('cfsCopyButton').disabled = files === 0 || printers === 0;
   }
 
@@ -357,6 +359,34 @@ class PrintOrbitPanel extends HTMLElement {
         this._note('cfsFileNotice', `Removed ${files.length} staged file${files.length===1?'':'s'}.`, 'success');
         await this._refreshFiles();
       } catch (err) { this._note('cfsFileNotice', this._errorMessage(err), 'error'); }
+    });
+
+    this._$('cfsRemoveRemote').addEventListener('click', async () => {
+      const files = this._selected('.cfsFileCheck');
+      const printers = this._selected('.cfsPrinterCheck');
+      if (!files.length || !printers.length) {
+        this._note('cfsFileNotice', 'Select at least one file and one printer.', 'error');
+        return;
+      }
+      const confirmed = window.confirm(
+        `Delete ${files.length} selected file${files.length === 1 ? '' : 's'} from ${printers.length} printer${printers.length === 1 ? '' : 's'}? This cannot be undone.`,
+      );
+      if (!confirmed) return;
+      this._setButtonBusy('cfsRemoveRemote', true);
+      this._note('cfsFileNotice', 'Deleting selected files from printers…');
+      try {
+        const result = await this._api('POST', 'files/remote-delete', { files, printers });
+        const failed = result.results.filter(item => item.error);
+        const deleted = result.deleted;
+        const message = failed.length
+          ? `Deleted ${deleted} remote file${deleted === 1 ? '' : 's'}; ${failed.length} printer${failed.length === 1 ? ' reported an error' : 's reported errors'}. ${failed.map(item => `${item.printer_name}: ${item.error}`).join(' ')}`
+          : `Deleted ${deleted} remote file${deleted === 1 ? '' : 's'}.`;
+        this._note('cfsFileNotice', message, failed.length ? 'warning' : 'success');
+      } catch (err) {
+        this._note('cfsFileNotice', this._errorMessage(err), 'error');
+      } finally {
+        this._setButtonBusy('cfsRemoveRemote', false);
+      }
     });
 
     this._$('cfsCopyButton').addEventListener('click', async () => {

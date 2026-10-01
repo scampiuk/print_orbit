@@ -1,12 +1,15 @@
-"""HTTP-only file upload for Elegoo Centauri printers.
+"""File transfer and remote file deletion for Elegoo Centauri printers.
 
-The original Centauri Carbon (CC1) and Centauri Carbon 2 (CC2) both transfer
-files over HTTP. This module intentionally implements only that file-transfer
-surface: it opens no SDCP/MQTT control connection and cannot start a print.
+Uploads use the printers' HTTP file-transfer surfaces. Remote deletion uses the
+CC1 SDCP control channel; it is deliberately separate from uploads and never
+starts, pauses or stops a print.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import json
+import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -20,6 +23,11 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 PrinterModel = Literal["cc1", "cc2"]
 ProgressCallback = Callable[[int, int], None]
 CHUNK_SIZE = 1024 * 1024
+REMOTE_COMMAND_TIMEOUT = 10
+
+
+class RemoteDeleteUnsupportedError(RuntimeError):
+    """The printer model does not yet expose remote deletion here."""
 
 
 def _file_md5(path: Path) -> str:
@@ -83,6 +91,111 @@ async def upload_file_to_printer(
         )
 
     return remote_name
+
+
+def _mainboard_id(payload: object) -> str | None:
+    """Find a MainboardID in an SDCP attributes/status payload."""
+    if isinstance(payload, dict):
+        value = payload.get("MainboardID")
+        if isinstance(value, str) and value:
+            return value
+        for nested in payload.values():
+            found = _mainboard_id(nested)
+            if found:
+                return found
+    elif isinstance(payload, list):
+        for nested in payload:
+            found = _mainboard_id(nested)
+            if found:
+                return found
+    return None
+
+
+async def delete_files_from_printer(
+    *,
+    hass: HomeAssistant,
+    host: str,
+    model: PrinterModel,
+    filenames: list[str],
+    access_code: str | None = None,
+) -> int:
+    """Delete a batch of staged-name files from one printer.
+
+    CC1 implements Cmd 259 over SDCP. CC2's MQTT control adapter is not yet
+    part of this integration, so it is reported explicitly to the caller.
+    """
+    if model == "cc2":
+        raise RemoteDeleteUnsupportedError(
+            "Remote deletion is not supported for CC2 printers yet"
+        )
+    del access_code  # Reserved for the future CC2 control adapter.
+    if not filenames:
+        return 0
+
+    mainboard_id: str | None = None
+    session = async_get_clientsession(hass)
+    timeout = aiohttp.ClientTimeout(total=REMOTE_COMMAND_TIMEOUT)
+    async with session.ws_connect(
+        f"ws://{host}:3030/websocket", timeout=timeout
+    ) as websocket:
+        deadline = time.monotonic() + REMOTE_COMMAND_TIMEOUT
+        while mainboard_id is None and time.monotonic() < deadline:
+            remaining = max(0.1, deadline - time.monotonic())
+            try:
+                message = await websocket.receive(timeout=remaining)
+            except asyncio.TimeoutError:
+                break
+            if message.type != aiohttp.WSMsgType.TEXT:
+                continue
+            try:
+                mainboard_id = _mainboard_id(json.loads(message.data))
+            except (TypeError, ValueError):
+                continue
+
+        if not mainboard_id:
+            raise RuntimeError(
+                "Printer did not provide its mainboard ID; remote deletion was not attempted"
+            )
+
+        request_id = uuid.uuid4().hex
+        await websocket.send_json(
+            {
+                "Id": mainboard_id,
+                "Topic": f"sdcp/request/{mainboard_id}",
+                "Data": {
+                    "Cmd": 259,
+                    "Data": {"FileList": [f"/local/{name}" for name in filenames]},
+                    "RequestID": request_id,
+                    "MainboardID": mainboard_id,
+                    "TimeStamp": int(time.time() * 1000),
+                    "From": 1,
+                },
+            }
+        )
+
+        deadline = time.monotonic() + REMOTE_COMMAND_TIMEOUT
+        while time.monotonic() < deadline:
+            remaining = max(0.1, deadline - time.monotonic())
+            try:
+                message = await websocket.receive(timeout=remaining)
+            except asyncio.TimeoutError:
+                break
+            if message.type != aiohttp.WSMsgType.TEXT:
+                continue
+            try:
+                payload = json.loads(message.data)
+            except (TypeError, ValueError):
+                continue
+            data = payload.get("Data", {}) if isinstance(payload, dict) else {}
+            if not isinstance(data, dict) or data.get("RequestID") != request_id:
+                continue
+            response_data = data.get("Data", {})
+            ack = response_data.get("Ack") if isinstance(response_data, dict) else None
+            if str(ack) != "0":
+                raise RuntimeError(f"Printer rejected remote deletion: {response_data}")
+            return len(filenames)
+
+    raise RuntimeError("Printer did not acknowledge remote deletion")
 
 
 async def _upload_cc1(

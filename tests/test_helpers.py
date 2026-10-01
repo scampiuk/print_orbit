@@ -25,3 +25,13 @@ def test_domain_migration_is_present():
     assert "LEGACY_STORAGE_KEY" in source
     assert "legacy_store.async_remove()" in source
     assert "source.replace(target)" in source
+
+
+def test_remote_delete_api_is_present():
+    manager = (ROOT / "manager.py").read_text()
+    http = (ROOT / "http.py").read_text()
+    uploader = (ROOT / "uploader.py").read_text()
+    assert "async_delete_remote_files" in manager
+    assert "/files/remote-delete" in http
+    assert '"Cmd": 259' in uploader
+    assert "Remote deletion is not supported for CC2 printers yet" in uploader
