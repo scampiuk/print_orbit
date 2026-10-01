@@ -22,7 +22,11 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
-from .uploader import upload_file_to_printer
+from .uploader import (
+    RemoteDeleteUnsupportedError,
+    delete_files_from_printer,
+    upload_file_to_printer,
+)
 
 
 def safe_filename(name: str) -> str:
@@ -212,6 +216,64 @@ class PrintOrbitManager:
             return deleted
 
         return await self.hass.async_add_executor_job(_delete)
+
+    async def async_delete_remote_files(
+        self, requested_files: list[str], requested_printers: list[str]
+    ) -> dict[str, Any]:
+        """Delete selected staged-name files from selected printers."""
+        if not requested_files or not requested_printers:
+            raise ValueError("Select at least one file and one printer")
+        if len(requested_files) > MAX_FILES_PER_BATCH:
+            raise ValueError(f"Maximum {MAX_FILES_PER_BATCH} files per request")
+        if len(requested_printers) > MAX_PRINTERS_PER_JOB:
+            raise ValueError(f"Maximum {MAX_PRINTERS_PER_JOB} printers per request")
+
+        filenames = list(dict.fromkeys(safe_filename(name) for name in requested_files))
+        printers_by_id = {printer["id"]: printer for printer in self.printers}
+        selected = []
+        for printer_id in dict.fromkeys(requested_printers):
+            printer = printers_by_id.get(printer_id)
+            if printer is None:
+                raise ValueError(f"Unknown printer: {printer_id}")
+            selected.append(printer)
+
+        async def delete_for_printer(printer: dict[str, Any]) -> dict[str, Any]:
+            try:
+                deleted = await delete_files_from_printer(
+                    hass=self.hass,
+                    host=printer["host"],
+                    model=printer["model"],
+                    filenames=filenames,
+                    access_code=printer.get("access_code"),
+                )
+                return {
+                    "printer_id": printer["id"],
+                    "printer_name": printer["name"],
+                    "deleted": deleted,
+                    "error": None,
+                }
+            except RemoteDeleteUnsupportedError as exc:
+                return {
+                    "printer_id": printer["id"],
+                    "printer_name": printer["name"],
+                    "deleted": 0,
+                    "error": str(exc),
+                }
+            except Exception as exc:  # Keep other printer results available.
+                return {
+                    "printer_id": printer["id"],
+                    "printer_name": printer["name"],
+                    "deleted": 0,
+                    "error": str(exc)[:500],
+                }
+
+        results = await asyncio.gather(*(delete_for_printer(printer) for printer in selected))
+        return {
+            "files": filenames,
+            "results": results,
+            "deleted": sum(result["deleted"] for result in results),
+            "failures": sum(result["error"] is not None for result in results),
+        }
 
     async def async_start_copy(
         self, requested_files: list[str], requested_printers: list[str]

@@ -23,6 +23,8 @@ for (const requiredPattern of [
   "document.createElement('ha-alert')",
   "customElements.define('print-orbit-panel'",
   '`print_orbit/${path}`',
+  "files/remote-delete",
+  'Delete from printers',
   'var(--primary-color)',
   '@media (max-width:600px)',
 ]) {
@@ -33,6 +35,10 @@ for (const requiredPattern of [
 
 if (panelSource.includes('/api/centauri_file_sync/')) {
   throw new Error('Legacy API route remains in the Print Orbit panel');
+}
+
+if (!panelSource.includes('window.confirm')) {
+  throw new Error('Remote deletion is missing explicit confirmation');
 }
 
 const panel = new Panel();

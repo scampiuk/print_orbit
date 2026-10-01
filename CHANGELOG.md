@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add an authenticated bulk remote-delete endpoint for selected files and printers.
+- Add a confirmation-gated panel action with per-printer results.
+- Implement CC1 SDCP Cmd 259 deletion and report CC2 as unsupported until its MQTT control adapter is available.
+
 ## 0.4.0
 
 - Rebrand the product as printer-agnostic **Print Orbit**, with a new orbit/printer HACS icon.
